@@ -312,6 +312,22 @@ body {
     color: var(--text-primary);
 }
 
+/* Account usage meters (desktop sidebar only) */
+.usage-meters { display: none; }
+
+/* Tab body: name row plus (desktop only) two grey usage lines */
+.tab-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.tab-main .tab-content { flex: none; }
+
+.tab-meta { display: none; }
+
 /* Desktop: vertical tabs in a left sidebar (mobile keeps the horizontal bar above) */
 @media (min-width: 769px) {
     #app { flex-direction: row; }
@@ -394,7 +410,73 @@ body {
 
     .session-tab.active .tab-close { opacity: 0.6; }
 
+    /* Name stays prominent on every tab; usage sits below it in dimmer grey */
+    .session-tab .tab-name {
+        color: var(--text-primary);
+        font-weight: 500;
+    }
+
+    .session-tab { padding: 8px 12px; }
+
+    .tab-meta {
+        display: block;
+        font-size: 11px;
+        line-height: 14px;
+        min-height: 28px; /* two lines, so tabs keep one height before stats arrive */
+        padding-left: 14px; /* aligns under the name, past the status dot */
+        color: var(--text-secondary);
+        opacity: 0.85;
+    }
+
+    .tab-meta > div {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .tab-actions { justify-content: flex-end; }
+
+    /* Two thin meters (5-hour, weekly) beside the settings gear: green < 50%, yellow <= 75%, red above */
+    .usage-meters:not([hidden]) {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .usage-meter {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        line-height: 10px;
+        color: var(--text-secondary);
+    }
+
+    .usage-label { width: 14px; flex-shrink: 0; }
+    .usage-pct { width: 28px; flex-shrink: 0; text-align: right; }
+
+    .usage-track {
+        flex: 1;
+        height: 6px;
+        border-radius: 3px;
+        background-color: var(--bg-tertiary);
+        overflow: hidden;
+    }
+
+    .usage-fill {
+        display: block;
+        height: 100%;
+        width: 0;
+        border-radius: 3px;
+        background-color: var(--text-secondary);
+        transition: width 0.3s ease, background-color 0.3s ease;
+    }
+
+    .usage-fill.ok { background-color: var(--success); }
+    .usage-fill.warn { background-color: var(--warning); }
+    .usage-fill.bad { background-color: var(--error); }
 
     /* Collapsed: a slim rail with the New Session "+", the expand arrow, and one dot + initial per tab */
     .session-tabs-bar.collapsed { width: 56px; }
@@ -409,7 +491,10 @@ body {
     .collapsed .tab-content { flex: none; gap: 5px; }
     .collapsed .tab-name { flex: none; width: 1.1ch; text-transform: uppercase; }
     .collapsed .tab-close { display: none; }
-    .collapsed .tab-actions { justify-content: center; }
+    .collapsed .tab-meta { display: none; }
+    .collapsed .tab-actions { flex-direction: column; justify-content: center; gap: 8px; }
+    .collapsed .usage-meters { width: 100%; flex: none; }
+    .collapsed .usage-label, .collapsed .usage-pct { display: none; }
 }
 
 /* Tab Overflow Dropdown for Mobile */

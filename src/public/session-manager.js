@@ -563,6 +563,7 @@ class SessionTabManager {
                 headers: authHeaders
             });
             const data = await response.json();
+            this.setLimits(data.limits);
             
             console.log('[SessionManager.loadSessions] Got data:', data);
             
@@ -576,6 +577,7 @@ class SessionTabManager {
                 console.log('[SessionManager.loadSessions] Adding tab for:', session.id);
                 // Don't auto-switch when loading existing sessions
                 this.addTab(session.id, session.name, session.busy ? 'busy' : session.active ? 'active' : 'idle', session.workingDir, false);
+                this.setStats(session.id, session.stats);
                 // Set initial timestamps based on order (older sessions get older timestamps)
                 const sessionData = this.activeSessions.get(session.id);
                 if (sessionData) {
@@ -621,9 +623,12 @@ class SessionTabManager {
         tab.title = displayName;
         
         tab.innerHTML = `
-            <div class="tab-content">
-                <span class="tab-status ${status}"></span>
-                <span class="tab-name" title="${workingDir || sessionName}">${displayName}</span>
+            <div class="tab-main">
+                <div class="tab-content">
+                    <span class="tab-status ${status}"></span>
+                    <span class="tab-name" title="${workingDir || sessionName}">${displayName}</span>
+                </div>
+                <div class="tab-meta"><div></div><div></div></div>
             </div>
             <span class="tab-close" title="Close tab">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -974,6 +979,87 @@ class SessionTabManager {
                 }
             }
         }
+    }
+
+    // Account-wide usage (5-hour / weekly windows): green < 50%, yellow <= 75%, red above
+    setLimits(limits) {
+        const box = document.getElementById('usageMeters');
+        if (!box) return;
+        box.hidden = !limits;
+        if (!limits) return;
+
+        const names = { fiveHour: '5-hour', sevenDay: 'Weekly' };
+        box.querySelectorAll('.usage-meter').forEach((row) => {
+            const key = row.dataset.window;
+            const win = limits[key];
+            const fill = row.querySelector('.usage-fill');
+            const pctEl = row.querySelector('.usage-pct');
+            // A window that has already reset is stale until the next Claude message updates it
+            const known = win && win.resetsAt * 1000 > Date.now();
+
+            fill.className = 'usage-fill';
+            if (!known) {
+                fill.style.width = '0%';
+                pctEl.textContent = '-';
+                row.title = `${names[key]} usage: updates after the next Claude message`;
+                return;
+            }
+            const pct = Math.max(0, Math.min(100, Math.round(win.pct)));
+            fill.style.width = `${pct}%`;
+            fill.classList.add(pct < 50 ? 'ok' : pct <= 75 ? 'warn' : 'bad');
+            pctEl.textContent = `${pct}%`;
+
+            const resets = new Date(win.resetsAt * 1000);
+            const sameDay = resets.toDateString() === new Date().toDateString();
+            const when = resets.toLocaleString(undefined, sameDay
+                ? { hour: 'numeric', minute: '2-digit' }
+                : { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+            row.title = `${names[key]} usage: ${pct}% - resets ${sameDay ? 'today ' : ''}${when}`;
+        });
+    }
+
+    formatTokens(n) {
+        if (n < 1000) return String(n);
+        if (n < 1e6) return `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k`;
+        return `${(n / 1e6).toFixed(1)}M`;
+    }
+
+    formatCost(c) {
+        return c > 0 && c < 0.01 ? '<$0.01' : `$${c.toFixed(2)}`;
+    }
+
+    // Live usage from Claude's statusLine hook, shown as grey meta lines under the tab name
+    setStats(sessionId, stats) {
+        const session = this.activeSessions.get(sessionId);
+        if (session) session.stats = stats || null;
+
+        const meta = this.tabs.get(sessionId)?.querySelector('.tab-meta');
+        if (!meta) return;
+        const [usage, context] = meta.children;
+        if (!stats) {
+            usage.textContent = context.textContent = meta.title = '';
+            return;
+        }
+
+        const has = (v) => v !== null && v !== undefined;
+        usage.textContent = [
+            has(stats.inTokens) && `${this.formatTokens(stats.inTokens)} in`,
+            has(stats.outTokens) && `${this.formatTokens(stats.outTokens)} out`
+        ].filter(Boolean).join(' · ');
+        context.textContent = [
+            has(stats.cost) && this.formatCost(stats.cost),
+            has(stats.ctxRemaining) && `${Math.round(stats.ctxRemaining)}% ctx left`,
+            stats.effort
+        ].filter(Boolean).join(' · ');
+        meta.title = [
+            stats.model && `Model: ${stats.model}`,
+            has(stats.inTokens) && `Input tokens: ${stats.inTokens.toLocaleString()}`,
+            has(stats.cacheReadTokens) && `Cache read tokens: ${stats.cacheReadTokens.toLocaleString()}`,
+            has(stats.outTokens) && `Output tokens: ${stats.outTokens.toLocaleString()}`,
+            has(stats.cost) && `Cost: $${stats.cost.toFixed(4)}`,
+            has(stats.ctxRemaining) && `Context remaining: ${Math.round(stats.ctxRemaining)}%`,
+            stats.effort && `Effort: ${stats.effort}`
+        ].filter(Boolean).join('\n');
     }
 
     // Server-detected working state: busy = red dot, otherwise green (idle or waiting for input)

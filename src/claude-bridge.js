@@ -1,11 +1,14 @@
 const { spawn } = require('node-pty');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 
 class ClaudeBridge {
   constructor() {
     this.sessions = new Map();
     this.claudeCommand = this.findClaudeCommand();
+    this.statusDir = path.join(os.homedir(), '.claude-code-web', 'status');
+    fs.mkdirSync(this.statusDir, { recursive: true });
   }
 
   findClaudeCommand() {
@@ -43,6 +46,21 @@ class ClaudeBridge {
     }
   }
 
+  // Where the statusLine hook drops Claude's live stats JSON for a web session
+  statusFilePath(sessionId) {
+    return path.join(this.statusDir, `${String(sessionId).replace(/[^\w-]/g, '')}.json`);
+  }
+
+  // --settings JSON that makes Claude write its statusLine payload (tokens, cost, context,
+  // effort) to statusFilePath(). Built only from server-side values, never client options.
+  statusLineSettings(sessionId) {
+    const q = (p) => `'${p.replace(/'/g, `'\\''`)}'`;
+    const file = this.statusFilePath(sessionId);
+    return JSON.stringify({
+      statusLine: { type: 'command', command: `cat > ${q(file + '.tmp')} && mv ${q(file + '.tmp')} ${q(file)}` }
+    });
+  }
+
   async startSession(sessionId, options = {}) {
     if (this.sessions.has(sessionId)) {
       throw new Error(`Session ${sessionId} already exists`);
@@ -68,6 +86,7 @@ class ClaudeBridge {
       }
 
       const args = dangerouslySkipPermissions ? ['--dangerously-skip-permissions'] : [];
+      args.push('--settings', this.statusLineSettings(sessionId));
       const claudeProcess = spawn(this.claudeCommand, args, {
         cwd: workingDir,
         env: {
