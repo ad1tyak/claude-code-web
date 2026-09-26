@@ -19,6 +19,18 @@ function pickStats(payload) {
   return Object.values(stats).some(v => v !== null) ? stats : null;
 }
 
+// Account-wide usage limits (5-hour and weekly windows) from the same payload. These are
+// shared by every session, unlike everything else in the stats. Null when absent (e.g. API keys).
+function pickRateLimits(payload) {
+  const rl = payload && payload.rate_limits;
+  if (!rl || typeof rl !== 'object') return null;
+  const win = (w) => (w && typeof w.used_percentage === 'number' && typeof w.resets_at === 'number')
+    ? { pct: w.used_percentage, resetsAt: w.resets_at }
+    : null;
+  const limits = { fiveHour: win(rl.five_hour), sevenDay: win(rl.seven_day) };
+  return limits.fiveHour || limits.sevenDay ? limits : null;
+}
+
 // Session token totals from a Claude transcript (JSONL). The statusLine payload only reports the
 // *current* request's tokens, so the running totals are summed from each assistant message's usage.
 // A message is written once per content block with the same id, so the last record per id wins.
@@ -49,4 +61,4 @@ class UsageTotals {
   }
 }
 
-module.exports = { pickStats, UsageTotals };
+module.exports = { pickStats, pickRateLimits, UsageTotals };

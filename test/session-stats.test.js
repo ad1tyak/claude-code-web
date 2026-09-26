@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { pickStats, UsageTotals } = require('../src/utils/session-stats');
+const { pickStats, pickRateLimits, UsageTotals } = require('../src/utils/session-stats');
 
 // Trimmed from a real Claude Code 2.1.283 statusLine payload
 const PAYLOAD = {
@@ -55,5 +55,23 @@ describe('UsageTotals', () => {
     const t = new UsageTotals();
     t.add(['{"type":"user"}', 'not json', '', JSON.stringify({ type: 'cost-state', totalCostUSD: 1 })].join('\n'));
     assert.deepStrictEqual(t.totals(), { inTokens: 0, outTokens: 0, cacheReadTokens: 0 });
+  });
+});
+
+describe('pickRateLimits', () => {
+  it('extracts both windows', () => {
+    assert.deepStrictEqual(pickRateLimits({ rate_limits: {
+      five_hour: { used_percentage: 17, resets_at: 1790445600 },
+      seven_day: { used_percentage: 4, resets_at: 1790841600 }
+    } }), { fiveHour: { pct: 17, resetsAt: 1790445600 }, sevenDay: { pct: 4, resetsAt: 1790841600 } });
+  });
+  it('keeps a single window when the other is missing or malformed', () => {
+    assert.deepStrictEqual(pickRateLimits({ rate_limits: { five_hour: { used_percentage: 50, resets_at: 1 }, seven_day: { used_percentage: 'x' } } }),
+      { fiveHour: { pct: 50, resetsAt: 1 }, sevenDay: null });
+  });
+  it('returns null when there are no limits', () => {
+    assert.strictEqual(pickRateLimits({}), null);
+    assert.strictEqual(pickRateLimits({ rate_limits: {} }), null);
+    assert.strictEqual(pickRateLimits(null), null);
   });
 });

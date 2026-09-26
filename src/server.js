@@ -13,7 +13,7 @@ const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
 const { detectBusy } = require('./utils/busy-detector');
-const { pickStats, UsageTotals } = require('./utils/session-stats');
+const { pickStats, pickRateLimits, UsageTotals } = require('./utils/session-stats');
 const os = require('os');
 
 // Client-supplied terminal size for the pty; anything invalid falls back to the bridge default
@@ -110,8 +110,10 @@ class ClaudeCodeWebServer {
 
   async refreshStats(session, sessionId) {
     try {
-      const raw = await fs.promises.readFile(this.claudeBridge.statusFilePath(sessionId), 'utf8');
+      const file = this.claudeBridge.statusFilePath(sessionId);
+      const [raw, { mtimeMs }] = await Promise.all([fs.promises.readFile(file, 'utf8'), fs.promises.stat(file)]);
       const payload = JSON.parse(raw);
+      this.updateLimits(pickRateLimits(payload), mtimeMs);
       const stats = pickStats(payload);
       if (!stats) return;
 
@@ -122,6 +124,16 @@ class ClaudeCodeWebServer {
     } catch (error) {
       // Not written yet, or caught mid-write; the next change event retries
     }
+  }
+
+  // Usage limits are account-wide: keep the newest set seen from any session (by status file
+  // mtime, so loading old files at startup can't overwrite fresher data) and push changes.
+  updateLimits(limits, at) {
+    if (!limits || at < (this.limitsAt || 0)) return;
+    this.limitsAt = at;
+    if (JSON.stringify(limits) === JSON.stringify(this.limits)) return;
+    this.limits = limits;
+    this.broadcastAll({ type: 'usage_limits', limits });
   }
 
   // Running in/out token totals for this Claude run, read incrementally from its transcript
@@ -318,7 +330,7 @@ class ClaudeCodeWebServer {
         connectedClients: session.connections.size,
         lastActivity: session.lastActivity
       }));
-      res.json({ sessions: sessionList });
+      res.json({ sessions: sessionList, limits: this.limits || null });
     });
 
     // Create a new session

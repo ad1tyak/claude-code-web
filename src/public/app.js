@@ -760,6 +760,10 @@ class ClaudeCodeWebInterface {
                 this.loadSessions();
                 break;
                 
+            case 'usage_limits':
+                this.sessionTabManager?.setLimits(message.limits);
+                break;
+
             case 'session_stats':
                 this.sessionTabManager?.setStats(message.sessionId, message.stats);
                 break;

@@ -563,6 +563,7 @@ class SessionTabManager {
                 headers: authHeaders
             });
             const data = await response.json();
+            this.setLimits(data.limits);
             
             console.log('[SessionManager.loadSessions] Got data:', data);
             
@@ -978,6 +979,43 @@ class SessionTabManager {
                 }
             }
         }
+    }
+
+    // Account-wide usage (5-hour / weekly windows): green < 50%, yellow <= 75%, red above
+    setLimits(limits) {
+        const box = document.getElementById('usageMeters');
+        if (!box) return;
+        box.hidden = !limits;
+        if (!limits) return;
+
+        const names = { fiveHour: '5-hour', sevenDay: 'Weekly' };
+        box.querySelectorAll('.usage-meter').forEach((row) => {
+            const key = row.dataset.window;
+            const win = limits[key];
+            const fill = row.querySelector('.usage-fill');
+            const pctEl = row.querySelector('.usage-pct');
+            // A window that has already reset is stale until the next Claude message updates it
+            const known = win && win.resetsAt * 1000 > Date.now();
+
+            fill.className = 'usage-fill';
+            if (!known) {
+                fill.style.width = '0%';
+                pctEl.textContent = '-';
+                row.title = `${names[key]} usage: updates after the next Claude message`;
+                return;
+            }
+            const pct = Math.max(0, Math.min(100, Math.round(win.pct)));
+            fill.style.width = `${pct}%`;
+            fill.classList.add(pct < 50 ? 'ok' : pct <= 75 ? 'warn' : 'bad');
+            pctEl.textContent = `${pct}%`;
+
+            const resets = new Date(win.resetsAt * 1000);
+            const sameDay = resets.toDateString() === new Date().toDateString();
+            const when = resets.toLocaleString(undefined, sameDay
+                ? { hour: 'numeric', minute: '2-digit' }
+                : { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+            row.title = `${names[key]} usage: ${pct}% - resets ${sameDay ? 'today ' : ''}${when}`;
+        });
     }
 
     formatTokens(n) {
