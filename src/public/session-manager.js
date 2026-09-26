@@ -548,7 +548,7 @@ class SessionTabManager {
             sessions.forEach((session, index) => {
                 console.log('[SessionManager.loadSessions] Adding tab for:', session.id);
                 // Don't auto-switch when loading existing sessions
-                this.addTab(session.id, session.name, session.active ? 'active' : 'idle', session.workingDir, false);
+                this.addTab(session.id, session.name, session.busy ? 'busy' : session.active ? 'active' : 'idle', session.workingDir, false);
                 // Set initial timestamps based on order (older sessions get older timestamps)
                 const sessionData = this.activeSessions.get(session.id);
                 if (sessionData) {
@@ -926,29 +926,11 @@ class SessionTabManager {
         if (tab) {
             const statusEl = tab.querySelector('.tab-status');
             if (statusEl) {
-                // Get current session info
-                const session = this.activeSessions.get(sessionId);
-                const wasActive = session && session.status === 'active';
-                
                 // Preserve unread class if it exists
                 const hasUnread = statusEl.classList.contains('unread');
                 statusEl.className = `tab-status ${status}`;
-                
-                // When transitioning from active to idle for background tabs, mark as unread
-                if (wasActive && status === 'idle' && sessionId !== this.activeTabId) {
+                if (hasUnread) {
                     statusEl.classList.add('unread');
-                    if (session) {
-                        session.unreadOutput = true;
-                    }
-                } else if (hasUnread) {
-                    statusEl.classList.add('unread');
-                }
-                
-                // Update visual indicator based on status
-                if (status === 'active') {
-                    statusEl.classList.add('pulse');
-                } else {
-                    statusEl.classList.remove('pulse');
                 }
             }
             
@@ -964,62 +946,38 @@ class SessionTabManager {
             }
         }
     }
+
+    // Server-detected working state: busy = red dot, otherwise green (idle or waiting for input)
+    setBusy(sessionId, busy) {
+        const session = this.activeSessions.get(sessionId);
+        if (!session) return;
+        const wasBusy = session.status === 'busy';
+        if (wasBusy === busy) return;
+
+        this.updateTabStatus(sessionId, busy ? 'busy' : 'active');
+
+        if (busy) {
+            session.busySince = Date.now();
+        } else if (wasBusy && sessionId !== this.activeTabId) {
+            // A background task just finished
+            const sessionName = session.name || 'Session';
+            const duration = Date.now() - (session.busySince || Date.now());
+            session.unreadOutput = true;
+            this.updateUnreadIndicator(sessionId, true);
+            this.sendNotification(
+                `${sessionName} — ${this.getAlias('claude')} finished`,
+                `Worked for ${Math.round(duration / 1000)}s`,
+                sessionId
+            );
+        }
+    }
     
     markSessionActivity(sessionId, hasOutput = false, outputData = '') {
         const session = this.activeSessions.get(sessionId);
         if (!session) return;
         
         const previousActivity = session.lastActivity || 0;
-        const wasActive = session.status === 'active';
         session.lastActivity = Date.now();
-        
-        // Update status to active if there's output
-        if (hasOutput) {
-            this.updateTabStatus(sessionId, 'active');
-            
-            // Don't mark as unread immediately - wait for completion
-            // This prevents the blue indicator from showing while Claude is still working
-            
-            // Clear any existing timeouts
-            clearTimeout(session.idleTimeout);
-            clearTimeout(session.workCompleteTimeout);
-            
-            // Set a 90-second timeout to detect when Claude has likely finished working
-            session.workCompleteTimeout = setTimeout(() => {
-                const currentSession = this.activeSessions.get(sessionId);
-                if (currentSession && currentSession.status === 'active') {
-                    // Claude has been idle for 90 seconds - likely finished working
-                    this.updateTabStatus(sessionId, 'idle');
-                    
-                    // Only notify and mark as unread if Claude was previously active
-                    if (wasActive) {
-                        const sessionName = currentSession.name || 'Session';
-                        const duration = Date.now() - previousActivity;
-                        
-                        // Mark as unread if this is a background tab (blue indicator)
-                        if (sessionId !== this.activeTabId) {
-                            currentSession.unreadOutput = true;
-                            this.updateUnreadIndicator(sessionId, true);
-                            
-                            // Send notification that Claude appears to have finished
-                            this.sendNotification(
-                                `${sessionName} — ${this.getAlias('claude')} appears finished`,
-                                `No output for 90 seconds (worked for ${Math.round(duration / 1000)}s)`,
-                                sessionId
-                            );
-                        }
-                    }
-                }
-            }, 90000); // 90 seconds
-            
-            // Keep the original 5-minute timeout for full idle state
-            session.idleTimeout = setTimeout(() => {
-                const currentSession = this.activeSessions.get(sessionId);
-                if (currentSession && currentSession.status === 'idle') {
-                    // Already marked as idle by the 90-second timeout, no need to do anything
-                }
-            }, 300000); // 5 minutes
-        }
         
         // Check for command completion patterns
         if (hasOutput && outputData) {

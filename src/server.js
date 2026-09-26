@@ -12,6 +12,7 @@ const AgentBridge = require('./agent-bridge');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
+const { detectBusy } = require('./utils/busy-detector');
 
 // Client-supplied terminal size for the pty; anything invalid falls back to the bridge default
 const ptySize = ({ cols, rows } = {}) => {
@@ -230,6 +231,7 @@ class ClaudeCodeWebServer {
         name: session.name,
         created: session.created,
         active: session.active,
+        busy: !!session.busy,
         workingDir: session.workingDir,
         connectedClients: session.connections.size,
         lastActivity: session.lastActivity
@@ -866,6 +868,7 @@ class ClaudeCodeWebServer {
       sessionName: session.name,
       workingDir: session.workingDir,
       active: session.active,
+      busy: !!session.busy,
       outputBuffer: session.outputBuffer.slice(-200) // Send last 200 lines
     });
 
@@ -923,6 +926,7 @@ class ClaudeCodeWebServer {
           // Get the current session again to ensure we have the right reference
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
+          this.trackBusy(currentSession, data);
           
           // Add to buffer
           currentSession.outputBuffer.push(data);
@@ -940,6 +944,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
           }
           this.broadcastToSession(sessionId, {
             type: 'exit',
@@ -951,6 +956,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
           }
           this.broadcastToSession(sessionId, {
             type: 'error',
@@ -1027,6 +1033,7 @@ class ClaudeCodeWebServer {
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
+          this.trackBusy(currentSession, data);
           currentSession.outputBuffer.push(data);
           if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
             currentSession.outputBuffer.shift();
@@ -1037,6 +1044,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'exit', code, signal });
@@ -1045,6 +1053,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'error', message: error.message });
@@ -1114,6 +1123,7 @@ class ClaudeCodeWebServer {
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
+          this.trackBusy(currentSession, data);
           currentSession.outputBuffer.push(data);
           if (currentSession.outputBuffer.length > currentSession.maxBufferSize) {
             currentSession.outputBuffer.shift();
@@ -1124,6 +1134,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'exit', code, signal });
@@ -1132,6 +1143,7 @@ class ClaudeCodeWebServer {
           const currentSession = this.claudeSessions.get(sessionId);
           if (currentSession) {
             currentSession.active = false;
+            this.setBusy(currentSession, false);
             currentSession.agent = null;
           }
           this.broadcastToSession(sessionId, { type: 'error', message: error.message });
@@ -1176,6 +1188,25 @@ class ClaudeCodeWebServer {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data));
     }
+  }
+
+  // Working/idle state per session, pushed to every client so background tabs stay accurate
+  trackBusy(session, data) {
+    // Keep a short tail so a marker split across two pty chunks is still seen
+    const text = (session.busyTail || '') + data;
+    session.busyTail = text.slice(-10);
+    const busy = detectBusy(text);
+    if (busy !== undefined) this.setBusy(session, busy);
+  }
+
+  setBusy(session, busy) {
+    if (!!session.busy === busy) return;
+    session.busy = busy;
+    this.broadcastAll({ type: 'session_status', sessionId: session.id, busy });
+  }
+
+  broadcastAll(data) {
+    this.webSocketConnections.forEach(wsInfo => this.sendToWebSocket(wsInfo.ws, data));
   }
 
   broadcastToSession(claudeSessionId, data) {
