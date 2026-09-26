@@ -54,15 +54,16 @@
         <!-- Session Tabs Bar -->
         <div class="session-tabs-bar" id="sessionTabsBar">
             <div class="tabs-section">
-                <div class="tabs-container" id="tabsContainer">
-                    <!-- Tabs will be dynamically added here -->
-                </div>
                 <button class="tab-new" id="tabNewBtn" title="New Session (Ctrl+T)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"/>
                         <line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
+                    <span class="tab-new-label">New Session</span>
                 </button>
+                <div class="tabs-container" id="tabsContainer">
+                    <!-- Tabs will be dynamically added here -->
+                </div>
             </div>
             <!-- Overflow dropdown for mobile - outside tabs-section to prevent scrolling issues -->
             <div class="tab-overflow-wrapper" id="tabOverflowWrapper" style="display: none;">

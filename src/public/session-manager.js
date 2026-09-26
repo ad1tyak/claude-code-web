@@ -217,16 +217,7 @@ class SessionTabManager {
     ensureTabVisible(sessionId) {
         const tab = this.tabs.get(sessionId);
         if (!tab) return;
-        const scrollContainer = tab.closest('.tabs-section');
-        if (!scrollContainer) return;
-        const tabRect = tab.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-
-        if (tabRect.left < containerRect.left) {
-            scrollContainer.scrollLeft += tabRect.left - containerRect.left - 16;
-        } else if (tabRect.right > containerRect.right) {
-            scrollContainer.scrollLeft += tabRect.right - containerRect.right + 16;
-        }
+        tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
     updateTabHistory(sessionId) {
@@ -355,7 +346,7 @@ class SessionTabManager {
                 e.preventDefault();
                 const draggingTab = tabsContainer.querySelector('.dragging');
                 if (!draggingTab) return;
-                const afterElement = this.getDragAfterElement(tabsContainer, e.clientX);
+                const afterElement = this.getDragAfterElement(tabsContainer, e);
                 
                 if (afterElement == null) {
                     tabsContainer.appendChild(draggingTab);
@@ -1104,12 +1095,16 @@ class SessionTabManager {
         }
     }
 
-    getDragAfterElement(container, x) {
+    getDragAfterElement(container, e) {
+        // Vertical sidebar on desktop, horizontal bar on mobile
+        const vertical = getComputedStyle(container).flexDirection === 'column';
         const draggableElements = [...container.querySelectorAll('.session-tab:not(.dragging)')];
         
         return draggableElements.reduce((closest, child) => {
             const box = child.getBoundingClientRect();
-            const offset = x - box.left - box.width / 2;
+            const offset = vertical
+                ? e.clientY - box.top - box.height / 2
+                : e.clientX - box.left - box.width / 2;
             
             if (offset < 0 && offset > closest.offset) {
                 return { offset: offset, element: child };

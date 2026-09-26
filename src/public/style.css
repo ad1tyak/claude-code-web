@@ -294,7 +294,10 @@ body {
     transition: all 0.2s;
     flex-shrink: 0;
     margin-left: 4px;
+    order: 1; /* after the tabs in the horizontal (mobile) bar */
 }
+
+.tab-new-label { display: none; }
 
 .tab-actions { display: flex; gap: 6px; align-items: center; }
 .tab-tile {
@@ -331,6 +334,65 @@ body {
 .tab-settings:hover {
     background-color: var(--bg-tertiary);
     color: var(--text-primary);
+}
+
+/* Desktop: vertical tabs in a left sidebar (mobile keeps the horizontal bar above) */
+@media (min-width: 769px) {
+    #app { flex-direction: row; }
+
+    .session-tabs-bar {
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        width: 240px;
+        flex-shrink: 0;
+        padding: 8px;
+        gap: 8px;
+        border-bottom: none;
+        border-right: 1px solid var(--border);
+        overflow: hidden;
+    }
+
+    .tabs-section {
+        flex-direction: column;
+        align-items: stretch;
+        flex: 1;
+        min-height: 0;
+        gap: 8px;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .tab-new {
+        order: 0;
+        width: 100%;
+        gap: 8px;
+        margin-left: 0;
+        font: inherit;
+        font-size: 13px;
+    }
+
+    .tab-new-label { display: inline; }
+
+    .tabs-container {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0;
+    }
+
+    .session-tab {
+        min-width: 0;
+        max-width: none;
+        border-radius: 6px;
+    }
+
+    .session-tab.active {
+        border-color: var(--accent);
+    }
+
+    .session-tab.active .tab-close { opacity: 0.6; }
+
+    .tab-actions { justify-content: flex-end; }
 }
 
 /* Tab Overflow Dropdown for Mobile */
