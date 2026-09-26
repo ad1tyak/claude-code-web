@@ -645,7 +645,7 @@ class ClaudeCodeWebInterface {
                 
                 // Update tab status
                 if (this.sessionTabManager) {
-                    this.sessionTabManager.updateTabStatus(message.sessionId, message.active ? 'active' : 'idle');
+                    this.sessionTabManager.updateTabStatus(message.sessionId, message.busy ? 'busy' : message.active ? 'active' : 'idle');
                 }
                 
                 // Notify split container of session change
@@ -760,6 +760,10 @@ class ClaudeCodeWebInterface {
                 this.loadSessions();
                 break;
                 
+            case 'session_status':
+                this.sessionTabManager?.setBusy(message.sessionId, message.busy);
+                break;
+
             case 'output':
                 // Filter out focus tracking sequences (^[[I and ^[[O)
                 const filteredData = message.data.replace(/\x1b\[\[?[IO]/g, '');
