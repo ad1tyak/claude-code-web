@@ -308,6 +308,23 @@ class ClaudeCodeWebServer {
       });
     });
 
+    // Rename a session
+    this.app.patch('/api/sessions/:sessionId', (req, res) => {
+      const session = this.claudeSessions.get(req.params.sessionId);
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+      if (!name || name.length > 100) {
+        return res.status(400).json({ error: 'Name must be 1-100 characters' });
+      }
+
+      session.name = name;
+      this.saveSessionsToDisk();
+      res.json({ success: true, name });
+    });
+
     // Delete a Claude session
     this.app.delete('/api/sessions/:sessionId', (req, res) => {
       const sessionId = req.params.sessionId;
