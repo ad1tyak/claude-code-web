@@ -605,6 +605,10 @@ class ClaudeCodeWebInterface {
     }
 
     send(data) {
+        // Spawn the pty at the real terminal size instead of the server's 80x24 default
+        if (data.type?.startsWith('start_')) {
+            data = { ...data, options: { ...data.options, cols: this.terminal.cols, rows: this.terminal.rows } };
+        }
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(data));
         }

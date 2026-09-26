@@ -13,6 +13,12 @@ const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
 
+// Client-supplied terminal size for the pty; anything invalid falls back to the bridge default
+const ptySize = ({ cols, rows } = {}) => {
+  const ok = (n) => Number.isInteger(n) && n > 0 && n <= 1000;
+  return { ...(ok(cols) && { cols }), ...(ok(rows) && { rows }) };
+};
+
 class ClaudeCodeWebServer {
   constructor(options = {}) {
     this.port = options.port || 32352;
@@ -895,6 +901,7 @@ class ClaudeCodeWebServer {
     try {
       await this.claudeBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        ...ptySize(options),
         onOutput: (data) => {
           // Get the current session again to ensure we have the right reference
           const currentSession = this.claudeSessions.get(sessionId);
@@ -999,6 +1006,7 @@ class ClaudeCodeWebServer {
     try {
       await this.codexBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        ...ptySize(options),
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
@@ -1085,6 +1093,7 @@ class ClaudeCodeWebServer {
     try {
       await this.agentBridge.startSession(sessionId, {
         workingDir: session.workingDir,
+        ...ptySize(options),
         onOutput: (data) => {
           const currentSession = this.claudeSessions.get(sessionId);
           if (!currentSession) return;
