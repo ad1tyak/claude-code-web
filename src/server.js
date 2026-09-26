@@ -13,6 +13,8 @@ const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
 const { detectBusy } = require('./utils/busy-detector');
+const { pickStats, UsageTotals } = require('./utils/session-stats');
+const os = require('os');
 
 // Client-supplied terminal size for the pty; anything invalid falls back to the bridge default
 const ptySize = ({ cols, rows } = {}) => {
@@ -74,6 +76,85 @@ class ClaudeCodeWebServer {
     } catch (error) {
       console.error('Failed to load persisted sessions:', error);
     }
+    this.startStatsWatcher();
+  }
+
+  // Claude's statusLine hook (see ClaudeBridge.statusLineSettings) writes live token/cost/context
+  // stats per web session; watch that directory and push changes to every client.
+  startStatsWatcher() {
+    try {
+      this.statsWatcher = fs.watch(this.claudeBridge.statusDir, (event, name) => {
+        if (name && name.endsWith('.json')) this.loadStats(name.slice(0, -5));
+      });
+    } catch (error) {
+      console.error('Failed to watch session stats directory:', error.message);
+    }
+    this.claudeSessions.forEach((_, id) => this.loadStats(id));
+  }
+
+  async loadStats(sessionId) {
+    const session = this.claudeSessions.get(sessionId);
+    if (!session) return;
+    // One load at a time per session (fs.watch fires repeatedly); rerun once if changes arrived meanwhile
+    if (session.statsLoading) { session.statsDirty = true; return; }
+    session.statsLoading = true;
+    try {
+      do {
+        session.statsDirty = false;
+        await this.refreshStats(session, sessionId);
+      } while (session.statsDirty);
+    } finally {
+      session.statsLoading = false;
+    }
+  }
+
+  async refreshStats(session, sessionId) {
+    try {
+      const raw = await fs.promises.readFile(this.claudeBridge.statusFilePath(sessionId), 'utf8');
+      const payload = JSON.parse(raw);
+      const stats = pickStats(payload);
+      if (!stats) return;
+
+      Object.assign(stats, await this.readTokenTotals(session, payload.transcript_path));
+      if (JSON.stringify(stats) === JSON.stringify(session.stats)) return;
+      session.stats = stats;
+      this.broadcastAll({ type: 'session_stats', sessionId, stats });
+    } catch (error) {
+      // Not written yet, or caught mid-write; the next change event retries
+    }
+  }
+
+  // Running in/out token totals for this Claude run, read incrementally from its transcript
+  async readTokenTotals(session, transcriptPath) {
+    const projects = path.join(os.homedir(), '.claude', 'projects') + path.sep;
+    if (typeof transcriptPath !== 'string' || !transcriptPath.startsWith(projects) || !transcriptPath.endsWith('.jsonl')) {
+      return {};
+    }
+    // A new Claude run in the same web session has a new transcript, so start over
+    let scan = session.usageScan;
+    if (!scan || scan.path !== transcriptPath) {
+      scan = session.usageScan = { path: transcriptPath, offset: 0, totals: new UsageTotals() };
+    }
+
+    let handle;
+    try {
+      handle = await fs.promises.open(transcriptPath, 'r');
+      const { size } = await handle.stat();
+      if (size > scan.offset) {
+        const buf = Buffer.alloc(size - scan.offset);
+        await handle.read(buf, 0, buf.length, scan.offset);
+        const end = buf.lastIndexOf(10); // only consume whole lines
+        if (end >= 0) {
+          scan.totals.add(buf.subarray(0, end + 1).toString('utf8'));
+          scan.offset += end + 1;
+        }
+      }
+    } catch (error) {
+      return {};
+    } finally {
+      if (handle) await handle.close();
+    }
+    return scan.totals.totals();
   }
   
   setupAutoSave() {
@@ -232,6 +313,7 @@ class ClaudeCodeWebServer {
         created: session.created,
         active: session.active,
         busy: !!session.busy,
+        stats: session.stats || null,
         workingDir: session.workingDir,
         connectedClients: session.connections.size,
         lastActivity: session.lastActivity
@@ -354,6 +436,7 @@ class ClaudeCodeWebServer {
       });
       
       this.claudeSessions.delete(sessionId);
+      fs.promises.unlink(this.claudeBridge.statusFilePath(sessionId)).catch(() => {});
       
       // Save sessions after deletion
       this.saveSessionsToDisk();

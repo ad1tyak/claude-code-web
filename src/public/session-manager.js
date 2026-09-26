@@ -576,6 +576,7 @@ class SessionTabManager {
                 console.log('[SessionManager.loadSessions] Adding tab for:', session.id);
                 // Don't auto-switch when loading existing sessions
                 this.addTab(session.id, session.name, session.busy ? 'busy' : session.active ? 'active' : 'idle', session.workingDir, false);
+                this.setStats(session.id, session.stats);
                 // Set initial timestamps based on order (older sessions get older timestamps)
                 const sessionData = this.activeSessions.get(session.id);
                 if (sessionData) {
@@ -621,9 +622,12 @@ class SessionTabManager {
         tab.title = displayName;
         
         tab.innerHTML = `
-            <div class="tab-content">
-                <span class="tab-status ${status}"></span>
-                <span class="tab-name" title="${workingDir || sessionName}">${displayName}</span>
+            <div class="tab-main">
+                <div class="tab-content">
+                    <span class="tab-status ${status}"></span>
+                    <span class="tab-name" title="${workingDir || sessionName}">${displayName}</span>
+                </div>
+                <div class="tab-meta"><div></div><div></div></div>
             </div>
             <span class="tab-close" title="Close tab">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -974,6 +978,50 @@ class SessionTabManager {
                 }
             }
         }
+    }
+
+    formatTokens(n) {
+        if (n < 1000) return String(n);
+        if (n < 1e6) return `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k`;
+        return `${(n / 1e6).toFixed(1)}M`;
+    }
+
+    formatCost(c) {
+        return c > 0 && c < 0.01 ? '<$0.01' : `$${c.toFixed(2)}`;
+    }
+
+    // Live usage from Claude's statusLine hook, shown as grey meta lines under the tab name
+    setStats(sessionId, stats) {
+        const session = this.activeSessions.get(sessionId);
+        if (session) session.stats = stats || null;
+
+        const meta = this.tabs.get(sessionId)?.querySelector('.tab-meta');
+        if (!meta) return;
+        const [usage, context] = meta.children;
+        if (!stats) {
+            usage.textContent = context.textContent = meta.title = '';
+            return;
+        }
+
+        const has = (v) => v !== null && v !== undefined;
+        usage.textContent = [
+            has(stats.inTokens) && `${this.formatTokens(stats.inTokens)} in`,
+            has(stats.outTokens) && `${this.formatTokens(stats.outTokens)} out`
+        ].filter(Boolean).join(' · ');
+        context.textContent = [
+            has(stats.cost) && this.formatCost(stats.cost),
+            has(stats.ctxRemaining) && `${Math.round(stats.ctxRemaining)}% ctx left`,
+            stats.effort
+        ].filter(Boolean).join(' · ');
+        meta.title = [
+            stats.model && `Model: ${stats.model}`,
+            has(stats.inTokens) && `Input tokens: ${stats.inTokens.toLocaleString()}`,
+            has(stats.cacheReadTokens) && `Cache read tokens: ${stats.cacheReadTokens.toLocaleString()}`,
+            has(stats.outTokens) && `Output tokens: ${stats.outTokens.toLocaleString()}`,
+            has(stats.cost) && `Cost: $${stats.cost.toFixed(4)}`,
+            has(stats.ctxRemaining) && `Context remaining: ${Math.round(stats.ctxRemaining)}%`,
+            stats.effort && `Effort: ${stats.effort}`
+        ].filter(Boolean).join('\n');
     }
 
     // Server-detected working state: busy = red dot, otherwise green (idle or waiting for input)
