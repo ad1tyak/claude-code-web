@@ -794,27 +794,45 @@ class SessionTabManager {
         input.focus();
         input.select();
         
-        const saveNewName = () => {
-            const newName = input.value.trim() || currentName;
+        // No dragging while editing, otherwise the input can't take a text cursor/selection
+        tab.draggable = false;
+
+        let done = false;
+        const finish = (save) => {
+            if (done) return;
+            done = true;
+            const newName = (save && input.value.trim()) || currentName;
             const newNameSpan = document.createElement('span');
             newNameSpan.className = 'tab-name';
+            newNameSpan.title = newName;
             newNameSpan.textContent = newName;
             input.replaceWith(newNameSpan);
-            
-            // Update session data
+            tab.draggable = true;
+
+            if (newName === currentName) return;
+
             const session = this.activeSessions.get(sessionId);
             if (session) {
                 session.name = newName;
             }
+
+            // Persist so the name survives reloads and shows in other browsers
+            const authHeaders = window.authManager ? window.authManager.getAuthHeaders() : {};
+            fetch(`/api/sessions/${sessionId}`, {
+                method: 'PATCH',
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            })
+                .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); })
+                .catch(err => console.error('Failed to rename session:', err));
         };
-        
-        input.addEventListener('blur', saveNewName);
+
+        input.addEventListener('blur', () => finish(true));
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                saveNewName();
+                finish(true);
             } else if (e.key === 'Escape') {
-                input.value = currentName;
-                saveNewName();
+                finish(false);
             }
         });
     }
@@ -838,6 +856,7 @@ class SessionTabManager {
             if (!disabled) el.onclick = () => { try { fn(); } finally { menu.remove(); } };
             return el;
         };
+        menu.appendChild(addItem('Rename', () => this.renameTab(sessionId)));
         menu.appendChild(addItem('Close Others', () => this.closeOthers(sessionId)));
         document.body.appendChild(menu);
         menu.style.top = `${clientY + 4}px`;
