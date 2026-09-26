@@ -271,6 +271,10 @@ body {
 
 .tab-new-label { display: none; }
 
+/* Sidebar collapse is desktop-only; on mobile the toolbar wrapper doesn't affect the horizontal bar */
+.tab-toolbar { display: contents; }
+.tab-collapse { display: none; }
+
 .tab-actions { display: flex; gap: 6px; align-items: center; }
 .tab-tile {
   width: 28px; height: 28px; display:flex; align-items:center; justify-content:center;
@@ -335,9 +339,35 @@ body {
         overflow-y: auto;
     }
 
+    .tab-toolbar {
+        display: flex;
+        gap: 6px;
+    }
+
+    .tab-collapse {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background-color: transparent;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: background-color 0.2s, color 0.2s;
+    }
+
+    .tab-collapse:hover {
+        background-color: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+
     .tab-new {
         order: 0;
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         gap: 8px;
         margin-left: 0;
         font: inherit;
@@ -365,6 +395,21 @@ body {
     .session-tab.active .tab-close { opacity: 0.6; }
 
     .tab-actions { justify-content: flex-end; }
+
+    /* Collapsed: a slim rail with the New Session "+", the expand arrow, and one dot + initial per tab */
+    .session-tabs-bar.collapsed { width: 56px; }
+
+    .collapsed .tab-toolbar { flex-direction: column; }
+    .collapsed .tab-new { flex: none; width: 100%; }
+    .collapsed .tab-new-label { display: none; }
+    .collapsed .tab-collapse { width: 100%; }
+    .collapsed .tab-collapse svg { transform: rotate(180deg); }
+
+    .collapsed .session-tab { justify-content: center; padding: 6px 0; }
+    .collapsed .tab-content { flex: none; gap: 5px; }
+    .collapsed .tab-name { flex: none; width: 1.1ch; text-transform: uppercase; }
+    .collapsed .tab-close { display: none; }
+    .collapsed .tab-actions { justify-content: center; }
 }
 
 /* Tab Overflow Dropdown for Mobile */

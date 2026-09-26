@@ -309,6 +309,31 @@ class SessionTabManager {
         }
     }
 
+    // Collapse the desktop sidebar to a slim rail; the choice is remembered per browser
+    setupSidebarCollapse() {
+        const bar = document.getElementById('sessionTabsBar');
+        const btn = document.getElementById('tabCollapseBtn');
+        if (!bar || !btn) return;
+
+        const apply = (collapsed) => {
+            bar.classList.toggle('collapsed', collapsed);
+            const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            btn.title = label;
+            btn.setAttribute('aria-label', label);
+            btn.setAttribute('aria-expanded', String(!collapsed));
+        };
+
+        try { apply(localStorage.getItem('cc-web-sidebar-collapsed') === '1'); } catch (e) { /* storage unavailable */ }
+
+        btn.addEventListener('click', () => {
+            const collapsed = !bar.classList.contains('collapsed');
+            apply(collapsed);
+            try { localStorage.setItem('cc-web-sidebar-collapsed', collapsed ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+            // The terminal (and split panes) only refit on window resize, and their width just changed
+            window.dispatchEvent(new Event('resize'));
+        });
+    }
+
     setupTabBar() {
         const tabsContainer = document.getElementById('tabsContainer');
         const newTabBtn = document.getElementById('tabNewBtn');
@@ -317,6 +342,8 @@ class SessionTabManager {
         newTabBtn?.addEventListener('click', () => {
             this.createNewSession();
         });
+
+        this.setupSidebarCollapse();
         
         // Enable drag and drop for tabs
         if (tabsContainer) {
@@ -591,6 +618,7 @@ class SessionTabManager {
         const isDefaultSessionName = sessionName.startsWith('Session ') && sessionName.includes(':');
         const folderName = workingDir ? workingDir.split('/').pop() || '/' : null;
         const displayName = !isDefaultSessionName ? sessionName : (folderName || sessionName);
+        tab.title = displayName;
         
         tab.innerHTML = `
             <div class="tab-content">
@@ -805,6 +833,7 @@ class SessionTabManager {
             const newNameSpan = document.createElement('span');
             newNameSpan.className = 'tab-name';
             newNameSpan.title = newName;
+            tab.title = newName;
             newNameSpan.textContent = newName;
             input.replaceWith(newNameSpan);
             tab.draggable = true;
