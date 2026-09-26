@@ -342,60 +342,6 @@
                     });
             });
         }
-        
-        // Handle app install prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent Chrome 67 and earlier from automatically showing the prompt
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            
-            // Create install button if it doesn't exist
-            if (!document.getElementById('installBtn')) {
-                const installBtn = document.createElement('button');
-                installBtn.id = 'installBtn';
-                installBtn.className = 'install-btn';
-                installBtn.innerHTML = '<span class="icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg></span> Install App';
-                installBtn.style.cssText = `
-                    position: fixed;
-                    bottom: 20px;
-                    right: 20px;
-                    padding: 12px 20px;
-                    background: var(--accent);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, 'JetBrains Mono', monospace;
-                    font-size: 14px;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-                    z-index: 1000;
-                    transition: all 0.3s ease;
-                `;
-                
-                installBtn.addEventListener('click', async () => {
-                    if (deferredPrompt) {
-                        deferredPrompt.prompt();
-                        const { outcome } = await deferredPrompt.userChoice;
-                        console.log(`User response to install prompt: ${outcome}`);
-                        deferredPrompt = null;
-                        installBtn.remove();
-                    }
-                });
-                
-                document.body.appendChild(installBtn);
-            }
-        });
-        
-        // Handle successful installation
-        window.addEventListener('appinstalled', () => {
-            console.log('PWA was installed');
-            const installBtn = document.getElementById('installBtn');
-            if (installBtn) {
-                installBtn.remove();
-            }
-        });
     </script>
 </body>
 </html>
